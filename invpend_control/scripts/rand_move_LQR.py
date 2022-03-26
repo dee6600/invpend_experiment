@@ -6,6 +6,8 @@ import math
 import random
 import time
 
+import ubjson
+
 import rospy
 from std_msgs.msg import (UInt16, Float64)
 from sensor_msgs.msg import JointState
@@ -15,7 +17,7 @@ from geometry_msgs.msg import Point
 from simple_pid import PID
 from control import lqr
 import numpy as np
-
+import control
 
 
 class Testbed(object):
@@ -61,7 +63,7 @@ class Testbed(object):
                 reset_count += 1
                 rospy.sleep(1./self.freq)
 
-    def rand_move(self):
+    def rand_move(self, feedbackGain,desired_pose):
         '''
         For the purpose of test, 
         implement random velocity control on cart.
@@ -73,46 +75,23 @@ class Testbed(object):
             amplitude_factor = 25
             w = period_factor * elapsed.to_sec()
             return amplitude_factor * math.cos(w*2*math.pi)
+            
 
         while not rospy.is_shutdown():
+
+            current_pose=np.array([self.pos_cart,self.vel_cart,self.pos_pole,self.vel_pole])
+            u=np.dot(feedbackGain,(desired_pose - current_pose))
+            # self.pub_vel_cmd.publish(u)  
+
             # if math.fabs(self.pos_cart) <= 2.4:
-            #     # elapsed = rospy.Time.now() - start
-            #     cmd_vel = random.uniform(-50, 50)  # make_cmd(elapsed)
+            #     cmd_vel = u
             # else:
             #     cmd_vel = 0
 
-
-            #goal angle 
-            goal_angle = math.radians(-170)
-
-            # #calculate cmd_vel by PID
-            pid = PID(10, 1, 5, setpoint=goal_angle)
-            pid.output_limits = (-50, 50)
-
-            # # calculate cart velocity by LQR controller for pole angle
-            # A = np.array([[0, 1], [0, 0]])
-            # B = np.array([[0], [1]])
-            # Q = np.array([[1, 0], [0, 1]])
-            # R = np.array([[1]])
-            # K = lqr(A, B, Q, R)
-            # print("K: ", K)
-            # # cmd_vel = -K[0][0] * self.pos_pole
-
-            
-
-            if math.fabs(self.pos_cart) <= 2.4:
-                cmd_vel = pid(self.pos_cart)
-            else:
-                cmd_vel = 0
-
-
-            
-
-
             #print cart position and velocity, and cmd_vel, pole angle and angular velocity
-            rospy.loginfo("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f}, cmd_vel: {4:.5f}".format(self.pos_cart, self.vel_cart, math.degrees(self.pos_pole), self.vel_pole, cmd_vel))
+            # rospy.loginfo("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f}, cmd_vel: {4:.5f}".format(self.pos_cart, self.vel_cart, math.degrees(self.pos_pole), self.vel_pole, cmd_vel))
             
-            self._pub_vel_cmd.publish(cmd_vel)
+            self._pub_vel_cmd.publish(u)
             #print("---> velocity command: {:.4f}".format(cmd_vel))
             rate.sleep()
 
@@ -132,13 +111,36 @@ class Testbed(object):
 
 
 def main():
+
+    g = 9.8
+    l = 0.5
+    m = 2
+    M = 20
+
+    A = np.matrix([ [0, 1, 0, 0],
+                [0, 0,            (-12 * m * g)/((12 * M) + m), 0],
+                [0, 0,                                       0, 1],
+                [0, 0, (12 * g * (M + m))/(l * ((13 * M) + m)), 0]
+                ])
+
+    B = np.matrix([ [0],
+                [13 / ((13 * M) + m)],
+                [0],
+                [-12 / (l * ((13 * M) + m))]
+                ])
+    Q=np.diag([1,1,10,100])
+    R=np.diag([0.05])
+    K, S, E = control.lqr(A, B, Q, R)
+    feedbackGain = (control.place(A, B, E))
+    desired_pose=np.array([0,0,0,0])
+
     """ Perform testing actions provided by Testbed class
     """
     print("Initializing node... ")
     rospy.init_node('cart_PID_test')
     cart = Testbed()
     rospy.on_shutdown(cart.clean_shutdown)
-    cart.rand_move()
+    cart.rand_move(feedbackGain,desired_pose)
     rospy.spin()
 
 
