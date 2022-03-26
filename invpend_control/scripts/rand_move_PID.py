@@ -16,6 +16,10 @@ from sensor_msgs.msg import JointState
 from std_srvs.srv import Empty
 from gazebo_msgs.msg import LinkState
 from geometry_msgs.msg import Point
+from simple_pid import PID
+from control import lqr
+import numpy as np
+
 
 
 class Testbed(object):
@@ -24,7 +28,7 @@ class Testbed(object):
     def __init__(self):
         # init topics and services
         self._sub_invpend_states = rospy.Subscriber(
-            '/invpend/joint_states', JointState, self.jsCB)
+            '/invpend/joint_states', JointState, self.mycallback)
         self._pub_vel_cmd = rospy.Publisher(
             '/invpend/joint1_velocity_controller/command', Float64, queue_size=1)
         self._pub_set_pole = rospy.Publisher(
@@ -42,24 +46,24 @@ class Testbed(object):
         self.PoleState.pose.position = Point(0.0, -0.25, 2.0)
         self.PoleState.reference_frame = 'world'
 
-    def jsCB(self, data):
-        rospy.loginfo("~~~Getting Inverted pendulum joint states~~~")
+    def mycallback(self, data):
+        #rospy.loginfo("~~~Getting Inverted pendulum joint states~~~")
+        self.data = data
         self.pos_cart = data.position[1]
         self.vel_cart = data.velocity[1]
         self.pos_pole = data.position[0]
         self.vel_pole = data.velocity[0]
         # For debug purpose, uncomment the following line
-        # print("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f} \
-        # ".format(self.pos_cart, self.vel_cart, self.pos_pole, self.vel_pole))
-        if math.fabs(self.pos_cart) >= 2.4:
-            reset_count = 0
-            print("=== reset invpend pos ===\n")
-            while reset_count < self.reset_dur*self.freq:
-                print("reset counter: ", str(reset_count))
-                self._pub_vel_cmd.publish(0)
-                self._pub_set_pole.publish(self.PoleState)
-                reset_count += 1
-                rospy.sleep(1./self.freq)
+        #print("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f}".format(self.pos_cart, self.vel_cart, self.pos_pole, self.vel_pole))
+        # if math.fabs(self.pos_cart) >= 2.4:
+        #     reset_count = 0
+        #     print("=== reset invpend pos ===\n")
+        #     while reset_count < self.reset_dur*self.freq:
+        #         print("reset counter: ", str(reset_count))
+        #         self._pub_vel_cmd.publish(0)
+        #         self._pub_set_pole.publish(self.PoleState)
+        #         reset_count += 1
+        #         rospy.sleep(1./self.freq)
 
     def rand_move(self):
         '''
@@ -75,13 +79,45 @@ class Testbed(object):
             return amplitude_factor * math.cos(w*2*math.pi)
 
         while not rospy.is_shutdown():
+            # if math.fabs(self.pos_cart) <= 2.4:
+            #     # elapsed = rospy.Time.now() - start
+            #     cmd_vel = random.uniform(-50, 50)  # make_cmd(elapsed)
+            # else:
+            #     cmd_vel = 0
+
+
+            #goal angle 
+            goal_angle = 0.0
+
+            # #calculate cmd_vel by PID
+            pid = PID(1, 0.0, 0.5, setpoint=goal_angle)
+            pid.output_limits = (-50, 50)
+
+            # # calculate cart velocity by LQR controller for pole angle
+            # A = np.array([[0, 1], [0, 0]])
+            # B = np.array([[0], [1]])
+            # Q = np.array([[1, 0], [0, 1]])
+            # R = np.array([[1]])
+            # K = lqr(A, B, Q, R)
+            # print("K: ", K)
+            # # cmd_vel = -K[0][0] * self.pos_pole
+
+            
+
             if math.fabs(self.pos_cart) <= 2.4:
-                # elapsed = rospy.Time.now() - start
-                cmd_vel = random.uniform(-50, 50)  # make_cmd(elapsed)
+                cmd_vel = pid(self.pos_cart)
             else:
                 cmd_vel = 0
+
+
+            
+
+
+            #print cart position and velocity, and cmd_vel, pole angle and angular velocity
+            rospy.loginfo("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f}, cmd_vel: {4:.5f}".format(self.pos_cart, self.vel_cart, self.pos_pole, self.vel_pole, cmd_vel))
+            
             self._pub_vel_cmd.publish(cmd_vel)
-            print("---> velocity command: {:.4f}".format(cmd_vel))
+            #print("---> velocity command: {:.4f}".format(cmd_vel))
             rate.sleep()
 
     def clean_shutdown(self):
@@ -103,7 +139,7 @@ def main():
     """ Perform testing actions provided by Testbed class
     """
     print("Initializing node... ")
-    rospy.init_node('cart_wobble')
+    rospy.init_node('cart_PID_test')
     cart = Testbed()
     rospy.on_shutdown(cart.clean_shutdown)
     cart.rand_move()

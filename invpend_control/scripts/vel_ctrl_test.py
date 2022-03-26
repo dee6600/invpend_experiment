@@ -16,13 +16,18 @@ from sensor_msgs.msg import JointState
 from std_srvs.srv import Empty
 from gazebo_msgs.msg import LinkState
 from geometry_msgs.msg import Point
-    
+
+
 class Testbed(object):
     """ Testbed, for the pupose of testing cart-pole system """
+
     def __init__(self):
-        self._sub_invpend_states = rospy.Subscriber('/invpend/joint_states', JointState, self.jsCB)
-        self._pub_vel_cmd = rospy.Publisher('/invpend/joint1_velocity_controller/command', Float64, queue_size=1)
-        self._pub_set_pole = rospy.Publisher('/gazebo/set_link_state', LinkState)
+        self._sub_invpend_states = rospy.Subscriber(
+            '/invpend/joint_states', JointState, self.jsCB)
+        self._pub_vel_cmd = rospy.Publisher(
+            '/invpend/joint1_velocity_controller/command', Float64, queue_size=1)
+        self._pub_set_pole = rospy.Publisher(
+            '/gazebo/set_link_state', LinkState)
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_sim = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
@@ -35,14 +40,15 @@ class Testbed(object):
         self.PoleState.link_name = 'pole'
         self.PoleState.pose.position = Point(0.0, -0.25, 2.0)
         self.PoleState.reference_frame = 'world'
-                
+
     def jsCB(self, data):
-    	rospy.loginfo("\n~~~Getting Inverted pendulum joint states~~~\n")
-    	self.pos_cart = data.position[1]
-    	self.vel_cart = data.velocity[1]
-    	self.pos_pole = data.position[0]
-    	self.vel_pole = data.velocity[0]
-        print("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f}".format(self.pos_cart, self.vel_cart, self.pos_pole, self.vel_pole))
+        rospy.loginfo("\n~~~Getting Inverted pendulum joint states~~~\n")
+        self.pos_cart = data.position[1]
+        self.vel_cart = data.velocity[1]
+        self.pos_pole = data.position[0]
+        self.vel_pole = data.velocity[0]
+        print("cart_position: {0:.5f}, cart_velocity: {1:.5f}, pole_angle: {2:.5f}, pole_angular_velocity: {3:.5f}".format(
+            self.pos_cart, self.vel_cart, self.pos_pole, self.vel_pole))
         if math.fabs(self.pos_cart) >= 2.4:
             print("=== reset invpend pos ===\n")
             for _ in range(50):
@@ -51,7 +57,6 @@ class Testbed(object):
                 rospy.sleep(1./50)
                 # self.reset_sim()
 
-        
     def wobble(self):
         '''
         Cart performs the wobbling.
@@ -68,18 +73,18 @@ class Testbed(object):
         while not rospy.is_shutdown():
             if math.fabs(self.pos_cart) <= 2.4:
                 # elapsed = rospy.Time.now() - start
-                cmd_vel = random.uniform(-50, 50) # make_cmd(elapsed)
+                cmd_vel = random.uniform(-50, 50)  # make_cmd(elapsed)
             else:
                 cmd_vel = 0
             self._pub_vel_cmd.publish(cmd_vel)
-            #rate.sleep()
+            # rate.sleep()
             rospy.sleep(1./50)
-            
+
     def clean_shutdown(self):
         print("Shuting dwon...")
         self._pub_vel_cmd.publish(0)
         return True
-    
+
     def _reset(self):
         rospy.wait_for_service("/gazebo/reset_simulation")
         print("reset simulation===\n")
@@ -88,6 +93,7 @@ class Testbed(object):
         # self.unpause
         # rospy.wait_for_service("/gazebo/pause_physics")
         # self.pause
+
 
 def main():
     """ Perform testing actions provided by Testbed class
@@ -98,6 +104,7 @@ def main():
     rospy.on_shutdown(cart.clean_shutdown)
     cart.wobble()
     rospy.spin()
+
 
 if __name__ == '__main__':
     main()
